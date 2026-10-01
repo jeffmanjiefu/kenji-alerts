@@ -66,15 +66,26 @@ def build(food_rows, cosmetic_rows, today, days=730):
     return sorted(out.values(), key=lambda a: (a["date"], a["id"]), reverse=True)
 
 
+def check_sane(alerts, previous):
+    """Fail loudly (non-zero exit) instead of publishing a broken feed,
+    e.g. after TFDA renames a field or an export comes back empty."""
+    for kind in ("food", "cosmetic"):
+        if not any(a["kind"] == kind for a in alerts):
+            sys.exit(f"refusing to publish: no {kind} alerts (TFDA data changed?)")
+    if previous and len(alerts) < len(previous) / 2:
+        sys.exit(f"refusing to publish: {len(alerts)} alerts vs {len(previous)} before")
+
+
 def main(out_path="alerts.json"):
     alerts = build(fetch(FOOD), fetch(COSMETICS), date.today())
     try:
         with open(out_path, encoding="utf-8") as f:
-            if json.load(f).get("alerts") == alerts:
-                print("alerts unchanged")
-                return
+            previous = json.load(f).get("alerts")
     except (FileNotFoundError, ValueError):
-        pass
+        previous = None
+    check_sane(alerts, previous)
+    # Always rewrite so generatedAt says how fresh the data is (one small
+    # commit a day also keeps the scheduled workflow from being auto-disabled).
     feed = {"generatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "alerts": alerts}
     with open(out_path, "w", encoding="utf-8") as f:

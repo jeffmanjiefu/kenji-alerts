@@ -4,7 +4,7 @@ import unittest
 from datetime import date
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
-from build_alerts import build, parse_date, strip_html  # noqa: E402
+from build_alerts import build, check_sane, parse_date, strip_html  # noqa: E402
 
 TODAY = date(2026, 10, 1)
 
@@ -57,6 +57,25 @@ class BuildAlertsTest(unittest.TestCase):
     def test_body_is_capped(self):
         out = build([food("紅燈", "A", "2026/09/01", body="字" * 5000)], [], TODAY)
         self.assertEqual(len(out[0]["body"]), 1500)
+
+
+class SanityTest(unittest.TestCase):
+    def alerts(self, food, cosmetic):
+        return [{"kind": "food"}] * food + [{"kind": "cosmetic"}] * cosmetic
+
+    def test_empty_kind_fails(self):
+        with self.assertRaises(SystemExit):
+            check_sane(self.alerts(0, 400), previous=None)
+        with self.assertRaises(SystemExit):
+            check_sane(self.alerts(20, 0), previous=None)
+
+    def test_big_drop_fails(self):
+        with self.assertRaises(SystemExit):
+            check_sane(self.alerts(5, 100), previous=self.alerts(20, 450))
+
+    def test_normal_change_passes(self):
+        check_sane(self.alerts(19, 440), previous=self.alerts(20, 450))
+        check_sane(self.alerts(1, 1), previous=None)
 
 
 if __name__ == "__main__":
